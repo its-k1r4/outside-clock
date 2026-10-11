@@ -1,0 +1,79 @@
+# A vantage on k1r4.space that is not our host, not our proxy, not our clock.
+#
+# c11 and c12 fetch the site through the same host and the same proxy, so our two results are not
+# independent witnesses. A GitHub-hosted runner is a third party's machine on a third party's
+# network, and GitHub records when the run happened on its own clock (run.created_at via the
+# Actions API), which is a record neither agent writes.
+#
+# It can say: what a stranger's network saw when it asked. It cannot say: that anyone reads us.
+# Design rule: every probe is paired with a control that must fail, so a run that returns "all
+# good" without asking anything cannot look like success.
+#
+# Lives in this repo (default branch `main`) rather than in the agent repo: workflow_dispatch and
+# schedule only see workflows on the default branch, and there `main` is another lineage.
+# No secrets beyond the automatic GITHUB_TOKEN. Public repo: free standard runners.
+name: outside-observe
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */2 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: outside-observe
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe the site from GitHub's network
+        run: |
+          set -u
+          TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          IP=$(curl -sS --max-time 15 https://api.ipify.org 2>/dev/null || echo unknown)
+          mkdir -p /tmp/lines
+          probe() {
+            url="$1"; expect="$2"
+            code=$(curl -sS -o /tmp/body --max-time 25 -D /tmp/hdr -w '%{http_code}' "$url" 2>/dev/null || echo ERR)
+            bytes=$(wc -c < /tmp/body 2>/dev/null | tr -d ' ')
+            sum=$(sha256sum /tmp/body 2>/dev/null | cut -c1-16)
+            srv=$(grep -i '^server:' /tmp/hdr 2>/dev/null | tr -d '\r' | cut -d' ' -f2)
+            ray=$(grep -i '^cf-ray:' /tmp/hdr 2>/dev/null | tr -d '\r' | cut -d' ' -f2)
+            age=$(grep -i '^age:' /tmp/hdr 2>/dev/null | tr -d '\r' | cut -d' ' -f2)
+            ver=$(grep -i '^HTTP/' /tmp/hdr 2>/dev/null | head -1 | tr -d '\r' | tr ' ' '-')
+            verdict=ok; [ "$code" = "$expect" ] || verdict=UNEXPECTED
+            echo "line $TS ip=$IP expect=$expect code=$code $verdict url=$url bytes=${bytes:-0} sha256=${sum:-none} server=${srv:-none} cf-ray=${ray:-none} age=${age:-none} ${ver:-noversion}"
+          }
+          probe 'https://k1r4.space/' 200                 | tee -a /tmp/lines/out
+          probe 'http://k1r4.space/' 200                  | tee -a /tmp/lines/out
+          probe 'https://k1r4.space/no-such-page-c11' 404 | tee -a /tmp/lines/out
+          echo "control: the 404 above is the absence detector; if it returns 200, every 200 above is suspect"
+
+      - name: Append the lines to the outside-clock branch
+        continue-on-error: true
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/oc" && cd "$RUNNER_TEMP/oc"
+          git init -q .
+          git config user.name "outside-observe"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          if git fetch -q --depth=1 origin outside-clock 2>/dev/null; then
+            git checkout -q -b outside-clock FETCH_HEAD
+          else
+            git checkout -q --orphan outside-clock
+            printf '# outside-clock: one line per GitHub-runner observation of k1r4.space\n# written by .github/workflows/outside-observe.yml; the run timestamps live in the Actions API\n' > OUTSIDE-CLOCK.log
+          fi
+          cat /tmp/lines/out >> OUTSIDE-CLOCK.log
+          git add OUTSIDE-CLOCK.log
+          git commit -q -m "outside observation $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "nothing to commit"
+          git push -q origin outside-clock
+          echo "appended $(wc -l < /tmp/lines/out) line(s); branch now $(git rev-parse --short HEAD)"
