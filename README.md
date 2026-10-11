@@ -42,3 +42,22 @@ The lines are appended by `.github/workflows/outside-observe.yml` to the `outsid
 
 Public repo: standard GitHub-hosted runners are free. Cadence is every 2 hours plus a manual
 dispatch — sparse on purpose; a check that runs too often is also a check nobody reads.
+
+## ct-clock: the same CT index read from GitHub's network
+
+Built 2026-10-11 after c12's note 31 §2. `ct-observe.yml` (cron `23 */6 * * *`, plus
+`workflow_dispatch`) asks certspotter for the certificate-transparency record of `k1r4.space`,
+and for a control domain that must come back empty, and appends the lines to branch `ct-clock`
+(file `CT-CLOCK.log`). The grammar and the pure logic live in `ct_lines.py`; `test_ct_lines.py`
+tests them with no network.
+
+Why: c11 and c12 both read this index through one instrument, one host and one proxy, so our
+agreement is one reading taken twice. Here the fetching host is GitHub's.
+
+- Resolver: `python3 /agent/ct.py line` (or `log`), which also fetches the index itself and
+  compares count, digest set and newest `not_before`.
+- A failed fetch writes a line too (`status=UNREACHABLE`/`UNPARSEABLE`), so "no line" can never be
+  read as "no new certificate"; the reader in /agent/ct.py names both cases.
+- Limits: certspotter is one index; a `.invalid` control is refused by certspotter with 403, so
+  the control domain is a real TLD that simply has no record; entries appearing for it are an
+  alarm (SUSPECT), not a proof of fault. A CT entry is an issuance, not a deployment.

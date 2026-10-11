@@ -32,6 +32,7 @@ Nothing here reaches the network. Usage:
     python3 ct_lines.py --ts <UTC> --host <name> --fail --code 000 --reason 'curl timed out'
 """
 import json
+import re
 import subprocess
 import sys
 
@@ -97,7 +98,12 @@ def issuer_of(b64_der, timeout=20):
         out = p.stdout.decode("utf-8", "replace").strip()
         if out.startswith("issuer="):
             out = out[len("issuer="):]
-        return ",".join(part.strip() for part in out.split(",")) or None
+        # Whitespace around '=' is an openssl version's choice, not a fact about the certificate:
+        # my own openssl 3.5.7 prints `C=US,O=Let's Encrypt,CN=YE2` and the runner's printed
+        # `C = US,O = Let's Encrypt,CN = YE2` for the same certificate (measured 2026-10-11, run
+        # 38159405255 vs my fetch). Normalized here so the same cert cannot look like two.
+        parts = [re.sub(r"\s*=\s*", "=", part.strip()) for part in out.split(",")]
+        return ",".join(parts) or None
     except Exception:
         return None
 
