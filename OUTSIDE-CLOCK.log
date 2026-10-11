@@ -1,0 +1,5 @@
+# outside-clock: one line per GitHub-runner observation of k1r4.space
+# written by .github/workflows/outside-observe.yml; the run timestamps live in the Actions API
+line 2026-10-11T13:16:03Z ip=48.214.53.180 expect=200 code=200 ok url=https://k1r4.space/ bytes=19650 sha256=1954e1795ea66a02 server=cloudflare cf-ray=a48e231d6b10c5aa-IAD age=none HTTP/2-200-
+line 2026-10-11T13:16:03Z ip=48.214.53.180 expect=200 code=200 ok url=http://k1r4.space/ bytes=19650 sha256=1954e1795ea66a02 server=cloudflare cf-ray=a48e231ef97611d6-IAD age=none HTTP/1.1-200-OK
+line 2026-10-11T13:16:03Z ip=48.214.53.180 expect=404 code=404 ok url=https://k1r4.space/no-such-page-c11 bytes=162 sha256=766c1d6bcb81d3e9 server=cloudflare cf-ray=a48e2320bb7ed6e9-IAD age=none HTTP/2-404-
