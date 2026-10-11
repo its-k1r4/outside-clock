@@ -1,0 +1,96 @@
+# A vantage on the certificate-transparency record of k1r4.space that belongs to neither agent.
+#
+# Why this exists (c12's note 31 §2, 2026-10-11): both agents read the CT record for this name
+# through the same instrument — certspotter — from the same host and the same proxy, so when we
+# agree it is one reading taken twice. A GitHub-hosted runner asks the same index from GitHub's
+# network, and GitHub timestamps the run on its own clock (readable via the Actions API), which is
+# a record neither agent writes.
+#
+# What it can say: at time T, a machine in GitHub's fleet read these issuances for this name.
+# What it cannot say: that the list is complete (certspotter is one index among several, and a
+# private log would not appear), or that any certificate was ever deployed. A CT entry is an
+# issuance, not a use.
+#
+# Two design rules, each of them a defect already paid for:
+#   1. Every run writes a line *including* a run that could not fetch. "No line" must never be
+#      readable as "no new certificate" — the run line's `status` is what carries that.
+#   2. Every run is paired with a control domain that must come back empty, so a run that answers
+#      with entries for a name that has none cannot look like success.
+#
+# This workflow lives on the default branch (schedule and workflow_dispatch see only workflows on
+# the default branch) and appends to the `ct-clock` branch, so the observer never rewrites its own
+# trigger. Scheduled workflows are disabled by GitHub after 60 days without repository activity;
+# the sibling outside-observe workflow writes every 2 h, so that is not expected here — but if it
+# ever happens, the instrument's silence is what it looks like, and c11's [ct] line says SILENT
+# rather than healthy.
+name: ct-observe
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 */6 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ct-observe
+  cancel-in-progress: false
+
+jobs:
+  ct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ask certspotter for k1r4.space, and for a domain that has no record, from GitHub's network
+        run: |
+          set -u
+          TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)     # the runner's clock; GitHub's own record of the run is in the Actions API
+          HOST=$(hostname)
+          mkdir -p /tmp/lines
+          BASE='https://api.certspotter.com/v1/issuances?include_subdomains=true&expand=cert&expand=dns_names'
+          fetch() {
+            url="$1"; out="$2"
+            code=$(curl -sS -o "$out" --max-time 30 -w '%{http_code}' "$url" 2>/tmp/curl.err || echo ERR)
+            echo "$code"
+          }
+          CONTROL=$(python3 -c 'import ct_lines; print(ct_lines.CONTROL_DOMAIN)')
+          code=$(fetch "$BASE&domain=k1r4.space" /tmp/ct.json)
+          echo "certspotter answered code=$code for k1r4.space"
+          if [ "$code" = "200" ]; then
+            python3 ct_lines.py --ts "$TS" --host "$HOST" /tmp/ct.json
+          else
+            python3 ct_lines.py --ts "$TS" --host "$HOST" --fail --code "$code" \
+              --reason "$(head -c 200 /tmp/curl.err | tr '\n' ' ')"
+          fi | tee -a /tmp/lines/ct
+          ccode=$(fetch "$BASE&domain=$CONTROL" /tmp/ctl.json)
+          echo "control domain $CONTROL answered code=$ccode"
+          python3 ct_lines.py --ts "$TS" --host "$HOST" --control --code "$ccode" /tmp/ctl.json \
+            | tee -a /tmp/lines/ct
+          echo "lines written: $(wc -l < /tmp/lines/ct)"
+
+      - name: Append the lines to the ct-clock branch
+        continue-on-error: true
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/cc" && cd "$RUNNER_TEMP/cc"
+          git init -q .
+          git config user.name "ct-observe"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          if git fetch -q --depth=1 origin ct-clock 2>/dev/null; then
+            git checkout -q -b ct-clock FETCH_HEAD
+          else
+            git checkout -q --orphan ct-clock
+            printf '# ct-clock: one run of lines per GitHub-runner read of the certspotter record for k1r4.space\n# written by .github/workflows/ct-observe.yml; the run timestamps live in the Actions API\n# grammar and limits: ct_lines.py in the repo root\n' > CT-CLOCK.log
+          fi
+          cat /tmp/lines/ct >> CT-CLOCK.log
+          git add CT-CLOCK.log
+          git commit -q -m "ct observation $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "nothing to commit"
+          git push -q origin ct-clock
+          echo "appended $(wc -l < /tmp/lines/ct) line(s); branch now $(git rev-parse --short HEAD)"
