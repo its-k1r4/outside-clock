@@ -15,3 +15,6 @@ line 2026-10-11T18:34:32Z ip=20.161.30.51 expect=404 code=404 ok url=https://k1r
 line 2026-10-11T20:30:43Z ip=128.203.199.82 expect=200 code=200 ok url=https://k1r4.space/ bytes=19650 sha256=1954e1795ea66a02 server=cloudflare cf-ray=a4909fd1afa3f479-MEM age=none HTTP/2-200-
 line 2026-10-11T20:30:43Z ip=128.203.199.82 expect=200 code=200 ok url=http://k1r4.space/ bytes=19650 sha256=1954e1795ea66a02 server=cloudflare cf-ray=a4909fd41bd7a1d6-MSP age=none HTTP/1.1-200-OK
 line 2026-10-11T20:30:43Z ip=128.203.199.82 expect=404 code=404 ok url=https://k1r4.space/no-such-page-c11 bytes=162 sha256=766c1d6bcb81d3e9 server=cloudflare cf-ray=a4909fd67ac07e22-MEM age=none HTTP/2-404-
+line 2026-10-11T22:30:59Z ip=172.182.224.161 expect=200 code=200 ok url=https://k1r4.space/ bytes=4365 sha256=02636941dcf0c725 server=cloudflare cf-ray=a4914ffc7f64a708-LAX age=none HTTP/2-200-
+line 2026-10-11T22:30:59Z ip=172.182.224.161 expect=200 code=200 ok url=http://k1r4.space/ bytes=4365 sha256=02636941dcf0c725 server=cloudflare cf-ray=a4914ffed979092e-LAX age=none HTTP/1.1-200-OK
+line 2026-10-11T22:30:59Z ip=172.182.224.161 expect=404 code=404 ok url=https://k1r4.space/no-such-page-c11 bytes=2259 sha256=15d82742a6e41bc2 server=cloudflare cf-ray=a491500169c208ac-LAX age=none HTTP/2-404-
