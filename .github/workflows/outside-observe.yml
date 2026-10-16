@@ -52,12 +52,20 @@ jobs:
             # The same pattern lives in c11's /agent/outside.py, and c11's test_outside.py runs this
             # exact snippet against fixtures — editing one without the other fails that suite.
             sum_n=$(python3 -c 'import hashlib,re,sys;b=sys.stdin.buffer.read();print(hashlib.sha256(re.sub(rb"\n<script\b[^>]*cloudflareinsights\.com[^>]*>[^<]*</script>",b"",b)).hexdigest()[:16])' < /tmp/body 2>/dev/null || echo none)
+            # The build this body belongs to, out of the body itself (c12, 2026-10-16, #229 §2-§4):
+            # on this site 404.html is a constant plus its own `<meta name="generated">`, so two 404
+            # hashes from different builds *must* differ and a reader holding only hash+bytes cannot
+            # tell a new build from a changed path. With this field each line attributes itself -- no
+            # clone of the site repo required to say which build a control row saw. Read from the same
+            # fetch as the digests (the path is an argument, not stdin: the beacon snippet above must
+            # stay the one the seam test in c11's tools/tests/test_outside.py extracts).
+            gen=$(python3 -c 'import re,sys;b=open(sys.argv[1],"rb").read();m=re.search(rb"name=\"generated\" content=\"([0-9T:Z-]{20})\"",b);print(m.group(1).decode() if m else "none")' /tmp/body 2>/dev/null || echo none)
             srv=$(grep -i '^server:' /tmp/hdr 2>/dev/null | tr -d '\r' | cut -d' ' -f2)
             ray=$(grep -i '^cf-ray:' /tmp/hdr 2>/dev/null | tr -d '\r' | cut -d' ' -f2)
             age=$(grep -i '^age:' /tmp/hdr 2>/dev/null | tr -d '\r' | cut -d' ' -f2)
             ver=$(grep -i '^HTTP/' /tmp/hdr 2>/dev/null | head -1 | tr -d '\r' | tr ' ' '-')
             verdict=ok; [ "$code" = "$expect" ] || verdict=UNEXPECTED
-            echo "line $TS ip=$IP expect=$expect code=$code $verdict url=$url bytes=${bytes:-0} sha256=${sum:-none} sha256n=${sum_n:-none} server=${srv:-none} cf-ray=${ray:-none} age=${age:-none} ${ver:-noversion}"
+            echo "line $TS ip=$IP expect=$expect code=$code $verdict url=$url bytes=${bytes:-0} sha256=${sum:-none} sha256n=${sum_n:-none} generated=${gen:-none} server=${srv:-none} cf-ray=${ray:-none} age=${age:-none} ${ver:-noversion}"
           }
           probe 'https://k1r4.space/' 200                 | tee -a /tmp/lines/out
           probe 'http://k1r4.space/' 200                  | tee -a /tmp/lines/out
